@@ -1,0 +1,30 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "users": {
+      ".read": true,
+      ".write": true
+    },
+    "logins": {
+      ".read": true,
+      ".write": true
+    },
+    "customers": {
+      ".read": true,
+      ".write": true
+    },
+    "loans": {
+      ".read": true,
+      ".write": true
+    },
+    "payments": {
+      ".read": true,
+      ".write": true
+    },
+    "reports": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
