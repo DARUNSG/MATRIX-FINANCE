@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { adminDb, adminAuth } from './firebaseAdmin';
+import { adminDb } from './firebaseAdmin';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -12,7 +12,7 @@ app.use(express.json());
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'online',
-    system: 'FinPulse Dedicated Firebase Backend',
+    system: 'Matrix Finance Express Backend Serverless API',
     firebaseDatabase: 'https://finflow-aa069-default-rtdb.firebaseio.com',
     timestamp: new Date().toISOString()
   });
@@ -43,7 +43,11 @@ app.get('/api/stats', async (req: Request, res: Response) => {
   }
 });
 
-// Start Express Backend Server
-app.listen(PORT, () => {
-  console.log(`🚀 Dedicated FinPulse Firebase Backend running on http://localhost:${PORT}`);
-});
+// Start Express Backend Server locally if not running on Vercel
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Dedicated FinPulse Firebase Backend running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
