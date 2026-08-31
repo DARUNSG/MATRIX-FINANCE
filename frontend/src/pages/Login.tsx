@@ -73,13 +73,13 @@ export const Login: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleSubmitting(true);
-    const success = await loginWithGoogle(rememberMe);
+    const res = await loginWithGoogle(rememberMe);
     setIsGoogleSubmitting(false);
 
-    if (success) {
+    if (res?.success) {
       showToast('Google Sign-In Successful', 'Authenticated as Admin & synced to Firebase.', 'success');
-    } else {
-      showToast('Sign-In Cancelled', 'Google Account selection window was closed.', 'info');
+    } else if (res?.error) {
+      showToast('Google Sign-In', res.error, 'info');
     }
   };
 

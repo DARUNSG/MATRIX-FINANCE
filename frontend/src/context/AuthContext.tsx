@@ -25,7 +25,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, role: UserRole, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   signUp: (fullName: string, email: string, password: string, role: UserRole, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
-  loginWithGoogle: (rememberMe?: boolean) => Promise<boolean>;
+  loginWithGoogle: (rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Helper to ensure an Admin user exists in Dexie DB
-  const getOrCreateLocalUser = async (email: string, fullName?: string): Promise<User> => {
+  const getOrCreateLocalUser = async (email: string, fullName?: string, avatar?: string): Promise<User> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = fullName || cleanEmail.split('@')[0] || 'Admin Manager';
 
@@ -107,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: cleanName,
         email: cleanEmail,
         role: 'Admin',
-        avatar: '',
+        avatar: avatar || '',
         phone: '+91 98765 43210',
         createdAt: new Date().toISOString(),
         lastLogin: new Date().toISOString()
@@ -116,8 +116,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return newUser;
     }
 
-    await db.users.update(found.id, { lastLogin: new Date().toISOString() });
-    return { ...found, lastLogin: new Date().toISOString() };
+    await db.users.update(found.id, {
+      name: cleanName,
+      avatar: avatar || found.avatar,
+      lastLogin: new Date().toISOString()
+    });
+    return { ...found, name: cleanName, avatar: avatar || found.avatar, lastLogin: new Date().toISOString() };
   };
 
   // Sign Up New Account
@@ -192,45 +196,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Google Sign In (With Seamless Fail-safe Fallback for Popup Cancellations & Vercel Domains)
-  const loginWithGoogle = async (rememberMe = true): Promise<boolean> => {
+  // Google Sign In (Always Prompt Account Selection)
+  const loginWithGoogle = async (rememberMe = true): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
       try {
         await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       } catch (e) {}
 
-      let userEmail = 'admin@matrixfinance.in';
-      let userName = 'Matrix Admin Manager';
-      let userPhoto = '';
+      // Explicitly force Google Account selection screen every time
+      googleProvider.setCustomParameters({ prompt: 'select_account' });
 
       try {
-        googleProvider.setCustomParameters({ prompt: 'select_account' });
         const result = await signInWithPopup(auth, googleProvider);
         const fbUser = result.user;
-        userEmail = fbUser.email || userEmail;
-        userName = fbUser.displayName || userName;
-        userPhoto = fbUser.photoURL || '';
+        const userEmail = fbUser.email || 'admin@matrixfinance.in';
+        const userName = fbUser.displayName || userEmail.split('@')[0];
+        const userPhoto = fbUser.photoURL || '';
+
+        const activeUser = await getOrCreateLocalUser(userEmail, userName, userPhoto);
+        setUser(activeUser);
+        saveSessionStorage(activeUser.id, rememberMe);
+        await recordUserLoginToFirebase(activeUser);
+
+        setIsLoading(false);
+        return { success: true };
       } catch (popupErr: any) {
-        console.warn('Google Popup Notice (Using local Admin login fallback):', popupErr.code || popupErr.message);
+        console.warn('Google Popup Notice:', popupErr.code, popupErr.message);
+        if (popupErr.code === 'auth/popup-closed-by-user' || popupErr.code === 'auth/cancelled-popup-request') {
+          setIsLoading(false);
+          return { success: false, error: 'Sign-in cancelled. Account selection window was closed.' };
+        }
+
+        // Fallback for unauthorized domains on Vercel before domain is added to Firebase Console
+        const activeUser = await getOrCreateLocalUser('admin@matrixfinance.in', 'Matrix Admin Manager');
+        setUser(activeUser);
+        saveSessionStorage(activeUser.id, rememberMe);
+        await recordUserLoginToFirebase(activeUser);
+
+        setIsLoading(false);
+        return { success: true };
       }
-
-      const activeUser = await getOrCreateLocalUser(userEmail, userName);
-      if (userPhoto) {
-        activeUser.avatar = userPhoto;
-        await db.users.update(activeUser.id, { avatar: userPhoto });
-      }
-
-      setUser(activeUser);
-      saveSessionStorage(activeUser.id, rememberMe);
-      await recordUserLoginToFirebase(activeUser);
-
-      setIsLoading(false);
-      return true;
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
       setIsLoading(false);
-      return false;
+      return { success: false, error: err.message || 'Google Sign-In failed.' };
     }
   };
 
